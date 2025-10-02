@@ -3,7 +3,7 @@ from torch.utils.cpp_extension import load
 
 # Compile and load CUDA extension
 conv_module = load(name="myconv",
-                     sources=["myconv_kernel.cu"],
+                     sources=["./myconv_kernel.cu"],
                      verbose=True)
 
 # Input parameters
