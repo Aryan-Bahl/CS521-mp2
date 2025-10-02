@@ -22,6 +22,13 @@ __global__ void gemm_gpu_o4_kernel(
     extern __shared__ float shmem[];  // shared memory for partial sums
     
     // TO DO : Tiled matrix multiplication by using shmem
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int bz = blockIdx.z;
+
+    int out_x = 
 }
 
 // Function for Python binding
