@@ -66,14 +66,14 @@ def conv2d(X, W, bias):
             oc_start = oc_tile * c_out_pmax
             bias_tile = nl.load(bias[nl.ds(oc_start, c_out_pmax)])
 
+            # Process rows one at a time (can't use dynamic sizes in SBUF)
             for oh in nl.affine_range(out_height):
                 accum = nl.zeros((c_out_pmax, out_width), dtype=X.dtype, buffer=nl.sbuf)
-                for ow in nl.affine_range(out_width):
-                    accum[:, ow] = bias_tile
 
                 for ic_tile in nl.sequential_range(n_tiles_c_in):
                     ic_start = ic_tile * c_in_pmax
                     
+                    # Load weight slab once
                     w_slab = nl.load(W[
                         nl.ds(oc_start, c_out_pmax),
                         nl.ds(ic_start, c_in_pmax),
@@ -81,20 +81,24 @@ def conv2d(X, W, bias):
                         nl.ds(0, filter_width)
                     ])
                     
+                    # Pre-transpose all at once
+                    w_slab_t = nl.ndarray((c_in_pmax, c_out_pmax, filter_height, filter_width), dtype=X.dtype, buffer=nl.sbuf)
+                    for fh in nl.affine_range(filter_height):
+                        for fw in nl.affine_range(filter_width):
+                            w_slab_t[:, :, fh, fw] = nl.transpose(w_slab[:, :, fh, fw])
+                    
                     for fh in nl.sequential_range(filter_height):
                         ih = oh + fh
                         for fw in nl.sequential_range(filter_width):
-                            w_2d = w_slab[:, :, fh, fw]  # shape = (c_out_pmax, c_in_pmax)
+                            w_2d_t = w_slab_t[:, :, fh, fw]
                             
                             x_tile = nl.load(X[b, nl.ds(ic_start, c_in_pmax), ih, nl.ds(fw, out_width)])
                             
-                            w_2d_t = nl.transpose(w_2d)  # shape = (c_in_pmax, c_out_pmax)
-                            
-                            # nc_matmul computes w_2d_t.T @ x_tile which is equivalent to w_2d @ x_tile
-                            # this is the reason I transposed the weight matrix above -> probably a better way to do this
                             update = nisa.nc_matmul(w_2d_t, x_tile)
                             accum[...] = nl.add(accum, update)
 
+                for ow in nl.affine_range(out_width):
+                    accum[:, ow] = nl.add(accum[:, ow], bias_tile)
                 nl.store(X_out[b, nl.ds(oc_start, c_out_pmax), oh, nl.ds(0, out_width)], value=accum)
 
     return X_out
