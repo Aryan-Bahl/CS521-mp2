@@ -1,0 +1,5 @@
+in_shape,filter,padding,stride,inductor_compile_ms,inductor_kernel_ms,inductor_wall_ms,reference_wall_ms,speedup_reference_over_inductor
+"(N=2,C=4,H=64,W=64)","(Cout=8,Cin=4,K=3)",1,1,265.792,0.122,265.914,0.038,6956.855
+"(N=2,C=4,H=128,W=128)","(Cout=8,Cin=4,K=3)",1,1,274.419,0.13,274.55,0.042,6516.212
+"(N=2,C=4,H=128,W=128)","(Cout=8,Cin=4,K=7)",3,1,414.97,0.305,415.274,0.07,5913.584
+"(N=2,C=4,H=256,W=256)","(Cout=16,Cin=4,K=3)",1,1,149.831,0.255,150.087,0.097,1543.673
