@@ -49,27 +49,39 @@ def conv2d(X, W, bias):
     out_pool_height = out_height
     out_pool_width = out_width
     
-    # Can assume multiple of 128 to avoid using mask
     assert in_channels % 128 == 0
-
-    # Can assume one PSUM bank can at least fit one row of the pixels
+    assert out_channels % 128 == 0
     assert nl.tile_size.gemm_moving_fmax >= out_width
 
-    # Initialize output array
     X_out = nl.ndarray(
         shape=(batch_size, out_channels, out_pool_height, out_pool_width),
         dtype=X.dtype,
         buffer=nl.hbm,
     )
 
-    # Various tiling dimensions (You may want to define more of them)
     c_in_pmax = nl.tile_size.pmax
     n_tiles_c_in = in_channels // c_in_pmax
 
     # Process the images in batches
     for b in nl.affine_range(batch_size):
-        raise RuntimeError("Please fill your implementation of computing convolution"
-                           " of X[b] with the weights W and bias b and store the result in X_out[b]")
+        for oc in nl.affine_range(out_channels):
+            bias_scalar = nl.load(bias[oc])
+
+            for oh in nl.affine_range(out_height):
+                accum = nl.add(bias_scalar, nl.zeros((1, out_width), dtype=X.dtype, buffer=nl.sbuf))
+
+                for fh in nl.sequential_range(filter_height):
+                    ih = oh + fh
+                    for fw in nl.sequential_range(filter_width):
+                        for ic_tile in nl.sequential_range(n_tiles_c_in):
+                            ic_start = ic_tile * c_in_pmax
+                            for i in nl.sequential_range(c_in_pmax):
+                                ic = ic_start + i
+                                x_row = nl.load(X[b, ic, nl.ds(ih, 1), nl.ds(fw, out_width)])
+                                w_val = nl.load(W[oc, ic, fh, fw])
+                                update = nl.multiply(w_val, x_row)
+                                accum[...] = nl.add(accum, update)
+
+                nl.store(X_out[b, oc, nl.ds(oh, 1), nl.ds(0, out_width)], value=accum)
 
     return X_out
-
