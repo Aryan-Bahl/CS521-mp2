@@ -1,5 +1,6 @@
 import torch
 from torch.utils.cpp_extension import load
+from torch.profiler import profile, record_function, ProfilerActivity
 
 # Compile and load CUDA extension
 conv_module = load(name="myconv",
@@ -16,11 +17,16 @@ x = torch.randn(N, C_in, H, W, device="cuda", dtype=torch.float32)
 w = torch.randn(C_out, C_in, KH, KW, device="cuda", dtype=torch.float32)
 
 # Run o4 kernel
-out_custom = conv_module.conv_cuda(x, w, stride, pad)
-
-# Reference solution (PyTorch)
-out_ref = torch.nn.functional.conv2d(x, w, stride=stride, padding=pad)
+with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+    with record_function("custom_conv"):
+        out_custom = conv_module.conv_cuda(x, w, stride, pad)
+    with record_function("reference_conv"):
+        out_ref = torch.nn.functional.conv2d(x, w, stride=stride, padding=pad)
 
 # Test shape and correctness
 print("CUDA --- shape check:", out_custom.shape == out_ref.shape)
 print("CUDA --- correctness check:", torch.allclose(out_custom, out_ref, atol=1e-4))
+
+prof.export_chrome_trace(f"traces/myconv_interface_trace.json")
+print("interface profiler trace exported")
+print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
