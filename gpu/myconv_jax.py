@@ -113,9 +113,8 @@ if __name__ == "__main__":
     os.makedirs(logdir, exist_ok=True)
     jax.profiler.start_trace(logdir, create_perfetto_trace=True)
     with jax.profiler.TraceAnnotation("manual_jax_conv"):
-        for _ in range(10):
-            out_jax = conv2d_manual_jax_jit(x_jax, weight_jax, bias_jax)
-            out_jax.block_until_ready()
+        out_jax = conv2d_manual_jax_jit(x_jax, weight_jax, bias_jax)
+        out_jax.block_until_ready()
     jax.profiler.stop_trace()
     print("JAX --- trace exported")
 
