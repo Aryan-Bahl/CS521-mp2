@@ -34,7 +34,6 @@ The shape of the output should be [batch_size, out_channels, out_pool_height, ou
 
 @nki.jit
 def conv2d(X, W, bias):
-
     batch_size, in_channels, input_height, input_width = X.shape
     out_channels, in_channels_, filter_height, filter_width = W.shape
     out_channels_ = bias.shape[0]
@@ -45,43 +44,57 @@ def conv2d(X, W, bias):
 
     out_height = input_height - filter_height + 1
     out_width = input_width - filter_width + 1
-
-    out_pool_height = out_height
-    out_pool_width = out_width
     
     assert in_channels % 128 == 0
     assert out_channels % 128 == 0
     assert nl.tile_size.gemm_moving_fmax >= out_width
 
     X_out = nl.ndarray(
-        shape=(batch_size, out_channels, out_pool_height, out_pool_width),
+        shape=(batch_size, out_channels, out_height, out_width),
         dtype=X.dtype,
         buffer=nl.hbm,
     )
 
     c_in_pmax = nl.tile_size.pmax
+    c_out_pmax = nl.tile_size.pmax
+    
     n_tiles_c_in = in_channels // c_in_pmax
+    n_tiles_c_out = out_channels // c_out_pmax
 
-    # Process the images in batches
     for b in nl.affine_range(batch_size):
-        for oc in nl.affine_range(out_channels):
-            bias_scalar = nl.load(bias[oc])
+        for oc_tile in nl.affine_range(n_tiles_c_out):
+            oc_start = oc_tile * c_out_pmax
+            bias_tile = nl.load(bias[nl.ds(oc_start, c_out_pmax)])
 
             for oh in nl.affine_range(out_height):
-                accum = nl.add(bias_scalar, nl.zeros((1, out_width), dtype=X.dtype, buffer=nl.sbuf))
+                accum = nl.zeros((c_out_pmax, out_width), dtype=X.dtype, buffer=nl.sbuf)
+                for ow in nl.affine_range(out_width):
+                    accum[:, ow] = bias_tile
 
-                for fh in nl.sequential_range(filter_height):
-                    ih = oh + fh
-                    for fw in nl.sequential_range(filter_width):
-                        for ic_tile in nl.sequential_range(n_tiles_c_in):
-                            ic_start = ic_tile * c_in_pmax
-                            for i in nl.sequential_range(c_in_pmax):
-                                ic = ic_start + i
-                                x_row = nl.load(X[b, ic, nl.ds(ih, 1), nl.ds(fw, out_width)])
-                                w_val = nl.load(W[oc, ic, fh, fw])
-                                update = nl.multiply(w_val, x_row)
-                                accum[...] = nl.add(accum, update)
+                for ic_tile in nl.sequential_range(n_tiles_c_in):
+                    ic_start = ic_tile * c_in_pmax
+                    
+                    w_slab = nl.load(W[
+                        nl.ds(oc_start, c_out_pmax),
+                        nl.ds(ic_start, c_in_pmax),
+                        nl.ds(0, filter_height),
+                        nl.ds(0, filter_width)
+                    ])
+                    
+                    for fh in nl.sequential_range(filter_height):
+                        ih = oh + fh
+                        for fw in nl.sequential_range(filter_width):
+                            w_2d = w_slab[:, :, fh, fw]  # shape = (c_out_pmax, c_in_pmax)
+                            
+                            x_tile = nl.load(X[b, nl.ds(ic_start, c_in_pmax), ih, nl.ds(fw, out_width)])
+                            
+                            w_2d_t = nl.transpose(w_2d)  # shape = (c_in_pmax, c_out_pmax)
+                            
+                            # nc_matmul computes w_2d_t.T @ x_tile which is equivalent to w_2d @ x_tile
+                            # this is the reason I transposed the weight matrix above -> probably a better way to do this
+                            update = nisa.nc_matmul(w_2d_t, x_tile)
+                            accum[...] = nl.add(accum, update)
 
-                nl.store(X_out[b, oc, nl.ds(oh, 1), nl.ds(0, out_width)], value=accum)
+                nl.store(X_out[b, nl.ds(oc_start, c_out_pmax), oh, nl.ds(0, out_width)], value=accum)
 
     return X_out

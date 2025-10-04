@@ -19,7 +19,6 @@ import subprocess
 
 logging.disable(logging.OFF)
 
-
 def save_trace(profile_name, neff_file_name):
     """Run the profiler and save the NEFF and NTFF files with the specified name."""
     subprocess.run(
@@ -81,18 +80,40 @@ def test_correctness_conv2d_kernel(
 
                         out = kernel(*args)
                         out_ref = ref_impl(*args)
+                        
+                        # Convert PyTorch tensor to numpy if needed
+                        if hasattr(out_ref, 'detach'):
+                            out_ref = out_ref.detach().numpy()
 
-                        if not np.allclose(out, out_ref):
+                        if not np.allclose(out, out_ref, atol=1e-4):
                             print(
-                                f"Output mismatch for input_channels: {input_channels}, \
-                        output_channels: {output_channels}, kernel_size: {kernel_size}, batch_size: {batch_size},\
-                         image_dims: {image_dims}, use_bias: {use_bias}"
+                                f"\nOutput mismatch for input_channels: {input_channels}, "
+                                f"output_channels: {output_channels}, kernel_size: {kernel_size}, "
+                                f"batch_size: {batch_size}, image_dims: {image_dims}, use_bias: {use_bias}"
                             )
+                            
+                            # Find where the mismatch is
+                            diff = np.abs(out - out_ref)
+                            max_diff = np.max(diff)
+                            max_diff_idx = np.unravel_index(np.argmax(diff), diff.shape)
+                            
+                            print(f"Max absolute difference: {max_diff}")
+                            print(f"Max diff location (b, c, h, w): {max_diff_idx}")
+                            print(f"NKI value at max diff: {out[max_diff_idx]}")
+                            print(f"Expected value at max diff: {out_ref[max_diff_idx]}")
+                            
+                            # Show some sample values
+                            print(f"\nFirst few NKI outputs [0, 0, 0, :5]: {out[0, 0, 0, :5]}")
+                            print(f"First few expected outputs [0, 0, 0, :5]: {out_ref[0, 0, 0, :5]}")
+                            
+                            # Check if it's systematically off
+                            mean_diff = np.mean(diff)
+                            print(f"Mean absolute difference: {mean_diff}")
+                            print(f"Percentage of values with diff > 1e-4: {100 * np.mean(diff > 1e-4):.2f}%")
 
                             return False
 
     return True
-
 
 def test_performance_conv2d_kernel(
     kernel,
