@@ -1,0 +1,5 @@
+in_shape,filter,padding,stride,baseline_ms,manual_ms,speedup_baseline_over_manual
+"(N=2,C=4,H=64,W=64)","(Cout=8,Cin=4,K=3)",1,1,0.04,0.151,3.775
+"(N=2,C=4,H=128,W=128)","(Cout=8,Cin=4,K=3)",1,1,0.04,0.152,3.832
+"(N=2,C=4,H=128,W=128)","(Cout=8,Cin=4,K=7)",3,1,0.064,0.296,4.603
+"(N=2,C=4,H=256,W=256)","(Cout=16,Cin=4,K=3)",1,1,0.098,0.323,3.304

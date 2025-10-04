@@ -1,0 +1,5 @@
+in_shape,filter,padding,stride,custom_wall_ms,reference_wall_ms,speedup_custom_over_reference
+"(N=2,C=4,H=64,W=64)","(Cout=8,Cin=4,K=3)",1,1,0.038,0.039,1.01
+"(N=2,C=4,H=128,W=128)","(Cout=8,Cin=4,K=3)",1,1,0.039,0.047,1.201
+"(N=2,C=4,H=128,W=128)","(Cout=8,Cin=4,K=7)",3,1,0.094,0.069,0.743
+"(N=2,C=4,H=256,W=256)","(Cout=16,Cin=4,K=3)",1,1,0.091,0.102,1.116
